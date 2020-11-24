@@ -16,24 +16,28 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
-    struct thread_info {
-        pthread_t thread_id;
-        int thread_num;
-        int iter_num;
-        struct tabulation_data_segment
-        {
-            double a_border;
-            double b_border;
-        }tab_segment;
-    };
-
 private slots:
     void on_CreateThreads_clicked();
 
 private:
 
     Ui::MainWindow *ui;
-    thread_info *STI;
 };
-
+struct default_thread_info {
+    int iter_num;
+};
+struct tabulation_data
+{
+    int iter_num;
+   double a_border;
+   double b_border;
+};
+struct search_data
+{
+    int iter_num;
+   int *array;
+   int startingPoint;
+   int endPoint;
+   int thread;
+};
 #endif // MAINWINDOW_H

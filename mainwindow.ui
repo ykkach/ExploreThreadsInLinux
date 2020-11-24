@@ -91,6 +91,11 @@
       <string>Function tabulation</string>
      </property>
     </item>
+    <item>
+     <property name="text">
+      <string>Search minimum</string>
+     </property>
+    </item>
    </widget>
    <widget class="QTextEdit" name="steps">
     <property name="geometry">

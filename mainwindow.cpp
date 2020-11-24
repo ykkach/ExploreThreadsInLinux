@@ -8,11 +8,11 @@
 #include <stdio.h>
 #include <QElapsedTimer>
 
+int *minElements;
 #define handle_error_en(en, msg) \
         do { errno = en; perror(msg); exit(EXIT_FAILURE); } while (0)
 
 char STUDENTDATA[] = "Yaroslav Kachmar 12700969\n";
-std::string PATH = "/home/yaroslav/student/build-ThreadsInLinux-Desktop-Debug/";
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -23,37 +23,39 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
-    delete STI;
+    //delete DTI;
+    //delete TTI;
     delete ui;
 }
 
 void* threadStartNfunc(void* arg){
-    std::ofstream out(PATH + "studentData.txt");
-    std::streambuf *coutbuf = std::cout.rdbuf();
-    std::cout.rdbuf(out.rdbuf());
-
-    MainWindow::thread_info* TI = (MainWindow::thread_info*)arg;
-    for(int i = 0; i < TI->iter_num; i++)
-    {
-        for(int k = 0; k < 26; k++)
+    std::fstream fRes;
+    fRes.open("studentInfo.txt", std::fstream::out | std::fstream::app);
+    if(fRes.is_open()){
+        default_thread_info* DTI = (default_thread_info*)arg;
+        for(int i = 0; i < DTI->iter_num; i++)
         {
-            std::cout << (STUDENTDATA[k]);
+            for(int k = 0; k < 26; k++)
+            {
+                fRes << (STUDENTDATA[k]);
+            }
         }
+       fRes.close();
+    }else{
+        perror("File could not be opened");
     }
-    std::cout.rdbuf(coutbuf);
     return (void*)0;
 }
 
 void* threadStartTfunc(void* arg){
 
     std::fstream fRes;
-    std::string filePath = PATH + "tabulation.txt";
-    fRes.open(filePath, std::ios::out | std::ios::app);
+    fRes.open("tabulation.txt", std::fstream::out | std::fstream::app);
     if(fRes.is_open())
     {
-        MainWindow::thread_info* TI = (MainWindow::thread_info*)arg;
+        tabulation_data* TTI = (tabulation_data*)arg;
 
-        double A = TI->tab_segment.a_border, B = TI->tab_segment.b_border, steps_quantity = TI->iter_num;
+        double A = TTI->a_border, B = TTI->b_border, steps_quantity = TTI->iter_num;
         double eps = 0.001, total{0}, holder{1};
         for(double x = A, step = (B-A)/steps_quantity; x < B; x+= step)
         {
@@ -75,12 +77,41 @@ void* threadStartTfunc(void* arg){
     return (void*)0;
 }
 
+void* threadStartSfunc(void* arg){
+    search_data* STI = (search_data*)arg;
+    int minElem = STI->array[STI->startingPoint];
+    for(int i = STI->startingPoint + 1; i < STI->endPoint; ++i)
+    {
+        if(minElem > STI->array[i])
+        minElem = STI->array[i];
+    }
+    std::fstream fRes;
+    fRes.open("search.txt", std::ios::out | std::ios::app);
+    if(fRes.is_open()){
+        for(int i = STI->startingPoint; i < STI->endPoint; ++i)
+            fRes << STI->array[i] << std::endl;
+        fRes.close();
+    }else{
+        perror("File could not be opened");
+    }
+    minElements[STI->thread] = minElem;
+
+    return (void*)0;
+}
+
 void MainWindow::on_CreateThreads_clicked()
 {
     int num_of_iterations = ui->steps->toPlainText().toInt(), num_of_threads = ui->numOfThreads->currentText().toInt();
     int steps_division = num_of_iterations/num_of_threads;
     double tabulation_division = 0.8/num_of_threads;
     double a_border = 0.1, b_border;
+
+    minElements = new int[num_of_threads];
+    int startingPoint = 0, endpoint = steps_division;
+    int *array = new int[num_of_iterations];
+    for(int i = 0 ; i < num_of_iterations; i++)
+        array[i] = rand() % 1000;
+
     ui->listOfThreads->setRowCount(num_of_threads);
     ui->listOfThreads->setColumnCount(3);
     ui->listOfThreads->setHorizontalHeaderItem(0, new QTableWidgetItem("Thread ID"));
@@ -95,43 +126,58 @@ void MainWindow::on_CreateThreads_clicked()
     pthread_attr_init(&attr);
     pthread_attr_setstacksize(&attr, stack_size);
 
-    STI = new thread_info[num_of_threads];
+    pthread_t handles[num_of_threads];
     sched_param param;
 
     int priority, policy;
+
+
     for(int tnum = 0; tnum < num_of_threads; tnum++)
     {
-        STI[tnum].thread_num = tnum + 1;
-        STI[tnum].iter_num = steps_division;
-        b_border = a_border + tabulation_division;
-        STI[tnum].tab_segment.a_border = a_border;
-        STI[tnum].tab_segment.b_border = b_border;
         int r;
-        ui->listOfThreads->setItem(tnum,2,new QTableWidgetItem("Running"));
         switch(ui->task->currentIndex())
         {
             case 0:
             {
-                r = pthread_create( &STI[tnum].thread_id, NULL, threadStartNfunc, (void*)&STI[tnum]);
+                default_thread_info *DTI = new default_thread_info();
+                DTI->iter_num = steps_division;
+                r = pthread_create( &handles[tnum], NULL, threadStartNfunc, (void*)DTI);
                 break;
             }
             case 1:
             {
-                r = pthread_create( &STI[tnum].thread_id, NULL, threadStartTfunc, (void*)&STI[tnum]);
+                tabulation_data *TTI = new tabulation_data();
+                b_border = a_border + tabulation_division;
+                TTI->iter_num = steps_division;
+                TTI->a_border = a_border;
+                TTI->b_border = b_border;
+                r = pthread_create( &handles[tnum], NULL, threadStartTfunc, (void*)TTI);
+                a_border = b_border;
+                break;
+            }
+            case 2:
+            {
+                search_data *STI = new search_data();
+                STI->array = array;
+                STI->iter_num = num_of_iterations;
+                STI->startingPoint = startingPoint;
+                STI->endPoint = endpoint;
+                STI->thread = tnum;
+                r = pthread_create( &handles[tnum], NULL, threadStartSfunc, (void*)STI);
+                startingPoint += steps_division;
+                endpoint += steps_division;
                 break;
             }
             default: r = 0;
         }
         if(r != 0) handle_error_en(r, "pthread_create");
 
-        pthread_getschedparam(STI[tnum].thread_id, &policy, &param);
+        pthread_getschedparam(handles[tnum], &policy, &param);
         priority = param.sched_priority;
 
-        a_border = b_border;
-
-        ui->listOfThreads->setItem(tnum,0,new QTableWidgetItem(QString::number(STI[tnum].thread_id)));
+        ui->listOfThreads->setItem(tnum,0,new QTableWidgetItem(QString::number(handles[tnum])));
         ui->listOfThreads->setItem(tnum,1,new QTableWidgetItem(QString::number(priority)));
-        ui->listOfThreads->setItem(tnum,2,new QTableWidgetItem("Finished"));
+        ui->listOfThreads->setItem(tnum,2,new QTableWidgetItem("Running"));
     }
     pthread_attr_destroy(&attr);
 
@@ -139,9 +185,27 @@ void MainWindow::on_CreateThreads_clicked()
     timer.start();
     for(int tnum = 0; tnum < num_of_threads; tnum++)
     {
-        pthread_join(STI[tnum].thread_id, NULL);
+        pthread_join(handles[tnum], NULL);
+        ui->listOfThreads->item(tnum, 2)->setText("Finished");
     }
     timer.nsecsElapsed();
+
+    if(ui->task->currentIndex() == 2)
+    {
+        std::fstream fRes;
+        fRes.open("search.txt", std::ios::out | std::ios::app);
+        if(fRes.is_open()){
+            int minimal_element = minElements[0];
+            for(int i = 1; i < num_of_threads; i++)
+                if(minimal_element > minElements[i])
+                    minimal_element = minElements[i];
+            fRes << std::endl;
+            fRes << "Minimal element : " << minimal_element << std::endl;
+            fRes.close();
+        }else{
+            perror("File could not be opened");
+        }
+    }
     ui->time->setText(QString::number(timer.nsecsElapsed()/1000000.0) + " ms");
 
 }
